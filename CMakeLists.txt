@@ -11,7 +11,7 @@ include_directories(include)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 set(SOURCE_FILES
-    # kalman_filter.cpp
+    src/dataset_handler.cpp
 )
 
 link_libraries(stdc++fs)
@@ -20,4 +20,4 @@ add_executable(${PROJECT_NAME} main.cpp ${SOURCE_FILES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${EIGEN3_INCLUDE_DIRS})
 
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} stdc++fs)

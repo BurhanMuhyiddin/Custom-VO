@@ -4,18 +4,13 @@
 
 #include <opencv2/opencv.hpp>
 
+#include <dataset_handler.hpp>
+
 int main() {
-    cv::Mat img = cv::Mat::zeros(200, 400, CV_8UC3);
+    const std::string img_folder = "../data";
 
-    // Put "Hello, OpenCV!" text on the image
-    cv::putText(img, "Hello, OpenCV!", cv::Point(50, 100), cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(0, 255, 0), 2);
+    DatasetHandler dataset_handler(img_folder, "00", false, 0);
 
-    // Show the image in a window
-    cv::imshow("Hello OpenCV", img);
-
-    // Wait for a key event and close the window
-    cv::waitKey(0);
-    cv::destroyAllWindows();
-
+    
     return 0;
 }
