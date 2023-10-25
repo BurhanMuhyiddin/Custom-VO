@@ -12,6 +12,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 
 set(SOURCE_FILES
     src/dataset_handler.cpp
+    src/helper_functions.cpp
 )
 
 link_libraries(stdc++fs)
