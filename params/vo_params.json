@@ -10,5 +10,21 @@
         "speckle_window_size": 0,
         "speckle_range": 0,
         "mode": 2
+    },
+    "feature_extractor": {
+        "type": "orb"
+    },
+    "feature_matcher": {
+        "type": "BF",
+        "k": 2,
+        "distance_threshold": 0.8,
+        "BF": {
+            "crosscheck": false
+        },
+        "FLANN": {
+            "FLANN_INDEX_KDTREE": 1,
+            "trees": 5,
+            "checks": 50
+        }
     }
 }
