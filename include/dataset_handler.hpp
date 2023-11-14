@@ -4,6 +4,7 @@
 #include <string>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 
 #include <opencv2/opencv.hpp>
 
@@ -65,7 +66,9 @@ public:
     std::unique_ptr<ImageLoader> left_image_loader_;
     std::unique_ptr<ImageLoader> right_image_loader_;
     std::unique_ptr<ImageLoader::iterator> left_image_loader_it_;
+    std::unique_ptr<ImageLoader::iterator> left_image_loader_end_it_;
     std::unique_ptr<ImageLoader::iterator> right_image_loader_it_;
+    std::unique_ptr<ImageLoader::iterator> right_image_loader_end_it_;
 
     cv::Mat P0_;
     cv::Mat P1_;

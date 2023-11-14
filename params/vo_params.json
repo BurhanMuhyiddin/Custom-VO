@@ -12,12 +12,12 @@
         "mode": 2
     },
     "feature_extractor": {
-        "type": "orb"
+        "type": "sift"
     },
     "feature_matcher": {
         "type": "BF",
         "k": 2,
-        "distance_threshold": 0.8,
+        "distance_threshold": 0.5,
         "BF": {
             "crosscheck": false
         },
@@ -26,5 +26,11 @@
             "trees": 5,
             "checks": 50
         }
+    },
+    "depth_calculation": {
+        "type": "stereo"
+    },
+    "plotting": {
+        "do_plot": false
     }
 }

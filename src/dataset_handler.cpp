@@ -19,7 +19,9 @@ DatasetHandler::DatasetHandler(const std::string &data_path, const std::string &
     left_image_loader_ = std::make_unique<ImageLoader>(left_images, imread_mode);
     right_image_loader_ = std::make_unique<ImageLoader>(right_images, imread_mode);
     left_image_loader_it_ = std::make_unique<ImageLoader::iterator>(left_image_loader_->begin());
+    left_image_loader_end_it_ = std::make_unique<ImageLoader::iterator>(left_image_loader_->end());
     right_image_loader_it_ = std::make_unique<ImageLoader::iterator>(right_image_loader_->begin());
+    right_image_loader_end_it_ = std::make_unique<ImageLoader::iterator>(right_image_loader_->end());
 
     auto calibration_matrices = ReadTxtToMat(calib_file_dir, 3, 4);
     if (calibration_matrices.size() == 5) {
@@ -62,6 +64,7 @@ std::vector<std::string> DatasetHandler::GetImgPathInDirectory(const std::string
                 img_paths.push_back(entry.path().string());
             }
         }
+        std::sort(img_paths.begin(), img_paths.end(), std::greater<std::string>());
     } catch(const fs::filesystem_error& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }

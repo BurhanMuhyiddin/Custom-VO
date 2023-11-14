@@ -11,35 +11,33 @@
 int main() {
     const std::string img_folder = "../data";
     const std::string vo_parameters_file_path = "../params/vo_params.json";
+    const std::string trajectory_file_path = "../data/trajectory/estimated_trajectory.txt";
 
     // Initialize parameter parser
     ParameterParser& parameter_parser = ParameterParser::GetInstance();
     parameter_parser.ReadJsonFile(vo_parameters_file_path);
 
     DatasetHandler dataset_handler(img_folder, "00", false, 0);
+    
+    auto start = std::chrono::high_resolution_clock::now();
 
-    auto left_image = *(*dataset_handler.left_image_loader_it_);
-    auto right_image = *(*dataset_handler.right_image_loader_it_);
+    std::vector<cv::Mat> trajectory;
+    visual_odometry(dataset_handler, cv::Mat(), -1, &trajectory);
 
-    auto depth = stereo_2_depth(left_image, right_image, dataset_handler.P0_, dataset_handler.P1_);  
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-    std::vector<cv::KeyPoint> kp0, kp1;
-    cv::Mat des0, des1;
-    extract_features(left_image, kp0, des0);
-    extract_features(right_image, kp1, des1);
+    std::cout << "Time to perform odometry: " << duration/1000.0 << "ms" << "\n";
 
-    std::vector<std::vector<cv::DMatch>> matches;
-    match_features(des0, des1, matches);
-    std::vector<cv::DMatch> good_matches;
-    filter_matches(matches, good_matches);
+    std::cout << "Saving the trajectory into " << trajectory_file_path << " ...\n";
+    save_trajectory(trajectory, trajectory_file_path);
 
-    std::cout << "Number of matches: " << matches.size() << "\n";
-    std::cout << "Number of matches after filtering: " << good_matches.size() << "\n";
+    std::cout << "Calculating trajectory estimation error...\n";
 
-    visualize_matches(left_image, kp0, right_image, kp1, good_matches);
-
-    // plot_matrix(depth, "Normalized depth map", true);
-    cv::waitKey(0);
+    Error error = calculate_error(dataset_handler.gt_data_, trajectory);
+    std::cout << "\tmae: " << error.GetMAE() << "\n";
+    std::cout << "\tmse: " << error.GetMSE() << "\n";
+    std::cout << "\trmse: " << error.GetRMSE() << "\n";
 
     return 0;
 }

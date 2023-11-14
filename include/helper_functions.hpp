@@ -2,6 +2,8 @@
 #define HELPER_FUNCTIONS_HPP
 
 #include <parse_params.hpp>
+#include <dataset_handler.hpp>
+#include <utilities.hpp>
 
 #include <chrono>
 #include <algorithm>
@@ -27,6 +29,21 @@ void filter_matches(const std::vector<std::vector<cv::DMatch>> &matches, std::ve
 void visualize_matches(const cv::Mat &img1, const std::vector<cv::KeyPoint> &kp1,
                        const cv::Mat &img2, const std::vector<cv::KeyPoint> &kp2,
                        const std::vector<cv::DMatch> &matches);
+
+void estimate_motion(const std::vector<cv::DMatch> &matches,
+                     const std::vector<cv::KeyPoint> &kp1,
+                     const std::vector<cv::KeyPoint> &kp2,
+                     const cv::Mat &k,
+                     cv::Mat &rmat,
+                     cv::Mat &tvec,
+                     std::vector<cv::Point2f> &img1_points,
+                     std::vector<cv::Point2f> &img2_points,
+                     const cv::Mat &depth1=cv::Mat(),
+                     int max_depth=3000);
+
+void visual_odometry(DatasetHandler &handler, const cv::Mat &mask=cv::Mat(), int subset=-1, std::vector<cv::Mat>* trajectory=nullptr);
+
+Error calculate_error(const std::vector<cv::Mat> &ground_truth, const std::vector<cv::Mat> &estimated);
 
 void plot_matrix(const cv::Mat &mat, const std::string &title, bool normalize=false);
 

@@ -46,7 +46,7 @@ cv::Mat compute_left_disparity_map(const cv::Mat &img_left, const cv::Mat &img_r
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
         std::transform(matcher_name.begin(), matcher_name.end(), matcher_name.begin(), ::toupper);
-        std::cout << "Time taken to calculate disparity map using Stereo" << matcher_name << ": " << duration << " microseconds" << std::endl;
+        std::cout << "Time taken to calculate disparity map using Stereo" << matcher_name << ": " << duration/1000.0 << "ms" << std::endl;
     } else if (matcher_name == "sgbm") {
         matcher_sgbm->setNumDisparities(num_disparities);
         matcher_sgbm->setMinDisparity(min_disparity);
@@ -65,7 +65,7 @@ cv::Mat compute_left_disparity_map(const cv::Mat &img_left, const cv::Mat &img_r
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
         std::transform(matcher_name.begin(), matcher_name.end(), matcher_name.begin(), ::toupper);
-        std::cout << "Time taken to calculate disparity map using Stereo" << matcher_name << ": " << duration << " microseconds" << std::endl;
+        std::cout << "Time taken to calculate disparity map using Stereo" << matcher_name << ": " << duration/1000.0 << "ms" << std::endl;
     }
 
     return disp_left;
@@ -184,6 +184,7 @@ void filter_matches(const std::vector<std::vector<cv::DMatch>> &matches, std::ve
     auto distance_threshold = parameters["feature_matcher"]["distance_threshold"].get<double>();
     
     for (const auto &match : matches) {
+        // std::cout << match[0].distance << ", " << match[1].distance << ", " << distance_threshold * match[1].distance << "\n";
         if (match[0].distance < distance_threshold * match[1].distance) {
             filtered_matches.push_back(match[0]);
         }
@@ -198,6 +199,183 @@ void visualize_matches(const cv::Mat &img1, const std::vector<cv::KeyPoint> &kp1
     cv::drawMatches(img1, kp1, img2, kp2, matches, image_matches);
 
     cv::imshow("Matched images", image_matches);
+}
+
+void estimate_motion(const std::vector<cv::DMatch> &matches,
+                     const std::vector<cv::KeyPoint> &kp1,
+                     const std::vector<cv::KeyPoint> &kp2,
+                     const cv::Mat &k,
+                     cv::Mat &rmat,
+                     cv::Mat &tvec,
+                     std::vector<cv::Point2f> &img1_points,
+                     std::vector<cv::Point2f> &img2_points,
+                     const cv::Mat &depth1,
+                     int max_depth) {
+    std::vector<cv::Point2f> img1_points_org;
+    std::vector<cv::Point2f> img2_points_org;
+    for (const auto &match : matches) {
+        img1_points_org.push_back(kp1[match.queryIdx].pt);
+        img2_points_org.push_back(kp2[match.trainIdx].pt);
+    }
+
+    if (!depth1.empty()) {
+        float cx = k.at<double>(0, 2);
+        float cy = k.at<double>(1, 2);
+        float fx = k.at<double>(0, 0);
+        float fy = k.at<double>(1, 1);
+        // std::cout << cx << "," << cy << "," << fx << "," << fy << "\n";
+
+        std::vector<int> delete_buffer;
+        std::vector<cv::Point3f> object_points;
+        for (int i = 0; i < img1_points_org.size(); i++) {
+            float u = img1_points_org[i].x;
+            float v = img1_points_org[i].y;
+            float z = depth1.at<float>(int(v), int(u));
+
+            if (z > max_depth) {
+                delete_buffer.push_back(i);
+                continue;
+            }
+
+            float x = z * (u - cx) / fx;
+            float y = z * (v - cy) / fy;
+
+            object_points.push_back(cv::Point3f(x, y, z));
+        }
+
+        for (int i = 0; i < img1_points_org.size(); i++) {
+            if (std::find(delete_buffer.begin(), delete_buffer.end(), i) == delete_buffer.end()) {
+                img1_points.push_back(img1_points_org[i]);
+                img2_points.push_back(img2_points_org[i]);
+            }
+        }
+
+        // std::cout << object_points.size() << "," << img1_points.size() << "," << img2_points.size() << "\n";
+
+        cv::Mat rvec, inliers;
+        cv::solvePnPRansac(object_points, img2_points, k, cv::Mat(), rvec, tvec, inliers);
+
+        // std::cout << rvec << "\n";
+
+        cv::Rodrigues(rvec, rmat);
+    } else {
+        cv::Mat E;
+        E = cv::findEssentialMat(img1_points, img2_points, k, cv::RANSAC);
+        cv::recoverPose(E, img1_points, img2_points, k, rmat, tvec);
+    }
+}
+
+void visual_odometry(DatasetHandler &handler, const cv::Mat &mask, int subset, std::vector<cv::Mat>* trajectory) {
+    auto& parameter_server = ParameterParser::GetInstance();
+    json parameters = parameter_server.GetParameters();
+
+    auto feature_extractor_type = parameters["feature_extractor"]["type"].get<std::string>();
+    auto feature_matcher_type = parameters["feature_matcher"]["type"].get<std::string>();
+    auto stereo_matcher_type = parameters["matcher"]["type"].get<std::string>();
+    auto depth_calculation_type = parameters["depth_calculation"]["type"].get<std::string>();
+    auto do_plot = parameters["plotting"]["do_plot"].get<bool>();
+    auto filter_match_distance = parameters["feature_matcher"]["distance_threshold"].get<float>();
+
+    std::cout << "Generating disparities with Stereo" << to_uppercase(stereo_matcher_type) << "\n";
+    std::cout << "Detecting features with " << to_uppercase(feature_extractor_type) << " and matrching with " << feature_matcher_type << "\n";
+    std::cout << "Filtering feature matches at threshold of " << filter_match_distance << "*distance" << "\n";
+
+    int num_frames = (subset > 0) ? std::min(subset, handler.num_frames_) : handler.num_frames_;
+
+    cv::Mat T_tot = cv::Mat::eye(4, 4, CV_64F);
+    trajectory->push_back(T_tot.rowRange(0, 3).clone());
+
+    int imheight = handler.im_height_;
+    int imwidth = handler.im_width_;
+
+    cv::Mat k_left, r_left, t_left;
+    decompose_projection_matrix(handler.P0_, k_left, r_left, t_left);
+
+    auto img_left = (*(*handler.left_image_loader_it_)).clone();
+    auto img_right = (*(*handler.right_image_loader_it_)).clone();
+    for (int i = 0; i < num_frames-1; i++) {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        cv::Mat depth;
+        if (depth_calculation_type == "stereo") {
+            depth = stereo_2_depth(img_left, img_right, handler.P0_, handler.P1_);
+        }
+
+        cv::Mat image_plus1 = (*(std::next(*handler.left_image_loader_it_))).clone();
+        std::vector<cv::KeyPoint> kp0, kp1;
+        cv::Mat des0, des1;
+        extract_features(img_left, kp0, des0);
+        extract_features(image_plus1, kp1, des1);
+
+        // cv::imshow("img_left", img_left);
+        // cv::imshow("image_plus1", image_plus1);
+        // cv::waitKey(0);
+
+        std::vector<std::vector<cv::DMatch>> matches_unfilt;
+        match_features(des0, des1, matches_unfilt);
+
+        // std::cout << matches_unfilt.size() << "\n";
+        
+        std::vector<cv::DMatch> matches;
+        filter_matches(matches_unfilt, matches);
+
+        if (matches.size() < 50) {
+            std::cout << "Number of matches is less than 50: " << matches.size() << "\n";
+            cv::imshow("img_left", img_left);
+            cv::imshow("image_plus1", image_plus1);
+            cv::waitKey(0);
+            continue;
+        }
+
+        // std::cout << matches.size() << "\n";
+
+        cv::Mat rmat, tvec;
+        std::vector<cv::Point2f> img1_points, img2_points;
+        estimate_motion(matches, kp0, kp1, k_left, rmat, tvec, img1_points, img2_points, depth);
+
+        cv::Mat Tmat = cv::Mat::eye(4, 4, CV_64F);
+        rmat.copyTo(Tmat(cv::Rect(0, 0, 3, 3)));
+        tvec.copyTo(Tmat(cv::Rect(3, 0, 1, 3)));
+
+        // std::cout << rmat << "\n";
+        // std::cout << "----------------\n";
+        // std::cout << tvec << "\n";
+        // std::cout << "----------------\n";
+        // std::cout << Tmat << "\n";
+
+        T_tot *= Tmat.inv();
+
+        trajectory->push_back(T_tot.rowRange(0, 3).clone());
+
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+
+        std::cout << "Time to compute frame" << i << ": " << duration/1000.0 << "ms" << "\n";
+
+        *handler.left_image_loader_it_ = std::next(*handler.left_image_loader_it_);
+        *handler.right_image_loader_it_ = std::next(*handler.right_image_loader_it_);
+        if ((*handler.left_image_loader_it_ != *handler.left_image_loader_end_it_) &&
+           (*handler.right_image_loader_it_ != *handler.right_image_loader_end_it_)) {
+            img_left = (*(*handler.left_image_loader_it_)).clone();
+            img_right = (*(*handler.right_image_loader_it_)).clone();
+        }
+    }
+    std::cout << "Finished Visual Odometry...\n";
+}
+
+Error calculate_error(const std::vector<cv::Mat> &ground_truth, const std::vector<cv::Mat> &estimated) {
+    Error error;
+
+    int nframes_est = estimated.size();
+
+    double mse = get_mse(ground_truth, estimated);
+    double mae = get_mae(ground_truth, estimated);
+
+    error.SetMSE(mse);
+    error.SetMAE(mae);
+    error.SetRMSE(sqrt(mse));
+
+    return error;
 }
 
 void plot_matrix(const cv::Mat &mat, const std::string &title, bool normalize) {
