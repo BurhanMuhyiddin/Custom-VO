@@ -64,7 +64,7 @@ std::vector<std::string> DatasetHandler::GetImgPathInDirectory(const std::string
                 img_paths.push_back(entry.path().string());
             }
         }
-        std::sort(img_paths.begin(), img_paths.end(), std::greater<std::string>());
+        std::sort(img_paths.begin(), img_paths.end(), std::less<std::string>());
     } catch(const fs::filesystem_error& e) {
         std::cerr << "Error: " << e.what() << std::endl;
     }

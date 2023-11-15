@@ -319,13 +319,13 @@ void visual_odometry(DatasetHandler &handler, const cv::Mat &mask, int subset, s
         std::vector<cv::DMatch> matches;
         filter_matches(matches_unfilt, matches);
 
-        if (matches.size() < 50) {
-            std::cout << "Number of matches is less than 50: " << matches.size() << "\n";
-            cv::imshow("img_left", img_left);
-            cv::imshow("image_plus1", image_plus1);
-            cv::waitKey(0);
-            continue;
-        }
+        // if (matches.size() < 50) {
+        //     std::cout << "Number of matches is less than 50: " << matches.size() << "\n";
+        //     cv::imshow("img_left", img_left);
+        //     cv::imshow("image_plus1", image_plus1);
+        //     cv::waitKey(0);
+        //     continue;
+        // }
 
         // std::cout << matches.size() << "\n";
 
